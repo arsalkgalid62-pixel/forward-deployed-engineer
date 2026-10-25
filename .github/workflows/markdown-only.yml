@@ -1,0 +1,43 @@
+name: Markdown only
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  markdown-only:
+    name: Only markdown files allowed
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check changed files
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          # First push to a branch has no "before" commit; check the whole tree instead
+          if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            files=$(git ls-tree -r --name-only "$HEAD_SHA")
+          else
+            files=$(git diff --name-only --diff-filter=ACMR "$BASE_SHA" "$HEAD_SHA")
+          fi
+
+          # Allowed: markdown files anywhere, plus repo config under .github/
+          bad=$(echo "$files" | grep -v -E '\.md$' | grep -v -E '^\.github/' || true)
+
+          if [ -n "$bad" ]; then
+            echo "::error::Only markdown (.md) files are allowed in this repository."
+            echo "These files are not allowed:"
+            echo "$bad" | sed 's/^/  - /'
+            exit 1
+          fi
+
+          echo "All changed files are markdown. ✔"
